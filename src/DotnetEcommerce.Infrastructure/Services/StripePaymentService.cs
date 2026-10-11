@@ -31,6 +31,23 @@ public class StripePaymentService : IPaymentService
         string cancelUrl,
         CancellationToken cancellationToken = default)
     {
+        var secretKey = _configuration["Stripe:SecretKey"] ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(secretKey) || secretKey.Contains("placeholder"))
+        {
+            var mockSessionId = "cs_sim_" + Guid.NewGuid().ToString("N")[..16];
+            order.AttachStripeSession(mockSessionId);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            var simulatedRedirectUrl = successUrl.Replace("{CHECKOUT_SESSION_ID}", mockSessionId);
+            if (!simulatedRedirectUrl.Contains("order_id="))
+            {
+                simulatedRedirectUrl += (simulatedRedirectUrl.Contains('?') ? "&" : "?") + "order_id=" + order.Id;
+            }
+
+            return (mockSessionId, simulatedRedirectUrl);
+        }
+
         var lineItems = order.Items.Select(item => new SessionLineItemOptions
         {
             PriceData = new SessionLineItemPriceDataOptions
